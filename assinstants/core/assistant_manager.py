@@ -19,18 +19,7 @@ class AssistantManager:
         Initialize the AssistantManager.
         """
         self.assistants: Dict[str, Assistant] = {}
-        self.custom_llm_function: Optional[Callable] = None
         log("ASSISTANT", "AssistantManager initialized")
-
-    def set_custom_llm_function(self, custom_function: Callable) -> None:
-        """
-        Set the custom LLM function for generating responses.
-
-        Args:
-            custom_function (Callable): The custom LLM function.
-        """
-        self.custom_llm_function = custom_function
-        log("ASSISTANT", "Custom LLM function set")
 
     async def create_assistant(
         self,

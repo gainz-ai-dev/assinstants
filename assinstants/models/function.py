@@ -1,6 +1,6 @@
 """Function models — define callable tools for assistants."""
 
-from typing import Any, Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -23,10 +23,3 @@ class FunctionDefinition(BaseModel):
 
     class Config:
         arbitrary_types_allowed = True
-
-
-class FunctionResult(BaseModel):
-    """The result of a function call."""
-
-    name: str
-    result: Any

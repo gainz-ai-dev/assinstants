@@ -30,7 +30,6 @@ setup(
     ],
     python_requires=">=3.8",
     install_requires=[
-        "aiohttp",
         "pydantic>=2.0.0",
         "colorama",
         "setuptools_scm",
