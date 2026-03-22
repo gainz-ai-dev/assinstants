@@ -1,35 +1,40 @@
-# core/thread_manager.py
-from ..models.thread import Thread
-from ..models.assistant import Assistant
-from typing import Dict, List, Literal, Optional, Union
+"""Thread manager — handles creation and management of conversation threads."""
+
 from datetime import datetime
+from typing import Dict, List, Literal, Optional, Union
+
+from ..models.assistant import Assistant
+from ..models.message import Message
+from ..models.thread import Thread
 from ..utils.exceptions import ThreadNotFoundError
 from ..utils.logging_utils import log
-from ..models.message import Message
 
 
 class ThreadManager:
+    """Manages conversation threads, their messages, and assigned assistants."""
+
     def __init__(self) -> None:
         self.threads: Dict[str, Thread] = {}
         log("THREAD", "ThreadManager initialized")
 
     async def create_thread(self) -> Thread:
+        """Create a new empty thread."""
         thread = Thread()
         self.threads[thread.id] = thread
         log("THREAD", f"Thread created with id: {thread.id}")
         return thread
 
     async def get_thread(self, thread_id: str) -> Thread:
+        """Retrieve a thread by ID. Raises ThreadNotFoundError if not found."""
         thread = self.threads.get(thread_id)
         if thread is None:
-            log("ERROR", f"Thread with id {thread_id} not found")
             raise ThreadNotFoundError(f"Thread with id {thread_id} not found")
-        log("THREAD", f"Retrieved thread with id: {thread_id}")
         return thread
 
     async def add_assistant_to_thread(
         self, thread_id: str, assistant: Assistant
     ) -> None:
+        """Add an assistant to a thread."""
         thread = await self.get_thread(thread_id)
         thread.assistants.append(assistant)
         log("THREAD", f"Added assistant {assistant.id} to thread {thread_id}")
@@ -37,9 +42,10 @@ class ThreadManager:
     async def remove_assistant_from_thread(
         self, thread_id: str, assistant_id: str
     ) -> None:
+        """Remove an assistant from a thread by ID."""
         thread = await self.get_thread(thread_id)
         thread.assistants = [
-            assistant for assistant in thread.assistants if assistant.id != assistant_id
+            a for a in thread.assistants if a.id != assistant_id
         ]
         log("THREAD", f"Removed assistant {assistant_id} from thread {thread_id}")
 
@@ -50,6 +56,7 @@ class ThreadManager:
         content: str,
         assistant_id: Optional[str] = None,
     ) -> Message:
+        """Add a message to a thread."""
         thread = await self.get_thread(thread_id)
         message = Message(
             role=role,
@@ -62,6 +69,6 @@ class ThreadManager:
         return message
 
     async def get_messages(self, thread_id: str) -> List[Message]:
+        """Get all messages in a thread."""
         thread = await self.get_thread(thread_id)
-        log("THREAD", f"Retrieved messages from thread {thread_id}")
         return thread.messages

@@ -1,15 +1,20 @@
+"""Assinstants — a provider-agnostic LLM assistant framework."""
+
+from typing import List
+
 from .core.assistant_manager import AssistantManager
-from .core.thread_manager import ThreadManager
 from .core.run_manager import RunManager
+from .core.thread_manager import ThreadManager
 from .models.tool import Tool
-from .utils.logging_utils import set_logging
 from .utils.exceptions import (
+    AssistantNotFoundError,
     BaseAIFrameworkError,
     FunctionExecutionError,
     FunctionNotFoundError,
     RunExecutionError,
+    ThreadNotFoundError,
 )
-from typing import List
+from .utils.logging_utils import set_logging
 
 try:
     from ._version import __version__
@@ -23,8 +28,10 @@ __all__: List[str] = [
     "Tool",
     "set_logging",
     "BaseAIFrameworkError",
+    "AssistantNotFoundError",
+    "ThreadNotFoundError",
+    "RunExecutionError",
     "FunctionExecutionError",
     "FunctionNotFoundError",
-    "RunExecutionError",
     "__version__",
 ]
