@@ -1,7 +1,6 @@
 # models/function.py
 from pydantic import BaseModel, Field
-from typing import Dict, Any, List, Optional, Callable
-from .shared import StepDetails, FunctionCall
+from typing import Any, Callable, Dict, List, Optional
 
 
 class FunctionParameter(BaseModel):
@@ -23,9 +22,3 @@ class FunctionDefinition(BaseModel):
 class FunctionResult(BaseModel):
     name: str
     result: Any
-
-
-class LLMResponse(BaseModel):
-    content: str
-    steps: List[StepDetails] = Field(default_factory=list)
-    function_calls: Optional[List[FunctionCall]] = None

@@ -1,8 +1,9 @@
 # core/thread_manager.py
 from ..models.thread import Thread
 from ..models.assistant import Assistant
-from typing import Dict, List, Union, Literal, Optional
+from typing import Dict, List, Literal, Optional, Union
 from datetime import datetime
+from ..utils.exceptions import ThreadNotFoundError
 from ..utils.logging_utils import log
 from ..models.message import Message
 
@@ -22,7 +23,7 @@ class ThreadManager:
         thread = self.threads.get(thread_id)
         if thread is None:
             log("ERROR", f"Thread with id {thread_id} not found")
-            raise ValueError(f"Thread with id {thread_id} not found")
+            raise ThreadNotFoundError(f"Thread with id {thread_id} not found")
         log("THREAD", f"Retrieved thread with id: {thread_id}")
         return thread
 

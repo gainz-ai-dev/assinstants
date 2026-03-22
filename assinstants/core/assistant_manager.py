@@ -3,6 +3,7 @@ from ..models.assistant import Assistant
 from typing import Callable, Dict, List, Optional
 import uuid
 from ..models.tool import Tool
+from ..utils.exceptions import AssistantNotFoundError
 from ..utils.logging_utils import log
 
 
@@ -69,7 +70,7 @@ class AssistantManager:
         assistant = self.assistants.get(assistant_id)
         if assistant is None:
             log("ERROR", f"Assistant with id {assistant_id} not found")
-            raise ValueError(f"Assistant with id {assistant_id} not found")
+            raise AssistantNotFoundError(f"Assistant with id {assistant_id} not found")
         log("ASSISTANT", f"Retrieved assistant with id: {assistant_id}")
         return assistant
 
