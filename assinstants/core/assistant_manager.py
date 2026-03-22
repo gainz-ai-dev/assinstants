@@ -1,8 +1,11 @@
-# core/assistant_manager.py
-from ..models.assistant import Assistant
-from typing import Dict, Callable, Optional, List
+"""Assistant manager — creates and retrieves assistants."""
+
 import uuid
+from typing import Callable, Dict, List, Optional
+
+from ..models.assistant import Assistant
 from ..models.tool import Tool
+from ..utils.exceptions import AssistantNotFoundError
 from ..utils.logging_utils import log
 
 
@@ -16,18 +19,7 @@ class AssistantManager:
         Initialize the AssistantManager.
         """
         self.assistants: Dict[str, Assistant] = {}
-        self.custom_llm_function: Optional[Callable] = None
         log("ASSISTANT", "AssistantManager initialized")
-
-    def set_custom_llm_function(self, custom_function: Callable) -> None:
-        """
-        Set the custom LLM function for generating responses.
-
-        Args:
-            custom_function (Callable): The custom LLM function.
-        """
-        self.custom_llm_function = custom_function
-        log("ASSISTANT", "Custom LLM function set")
 
     async def create_assistant(
         self,
@@ -35,7 +27,7 @@ class AssistantManager:
         instructions: str,
         model: str,
         custom_llm_function: Callable,
-        tools: List[Tool] = [],
+        tools: Optional[List[Tool]] = None,
         temperature: float = 0.7,
         **kwargs,
     ) -> Assistant:
@@ -45,7 +37,7 @@ class AssistantManager:
             instructions=instructions,
             model=model,
             custom_llm_function=custom_llm_function,
-            tools=tools,
+            tools=tools or [],
             temperature=temperature,
             **kwargs,
         )
@@ -69,7 +61,7 @@ class AssistantManager:
         assistant = self.assistants.get(assistant_id)
         if assistant is None:
             log("ERROR", f"Assistant with id {assistant_id} not found")
-            raise ValueError(f"Assistant with id {assistant_id} not found")
+            raise AssistantNotFoundError(f"Assistant with id {assistant_id} not found")
         log("ASSISTANT", f"Retrieved assistant with id: {assistant_id}")
         return assistant
 

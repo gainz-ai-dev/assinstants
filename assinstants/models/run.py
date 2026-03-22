@@ -1,13 +1,18 @@
-# models/run.py
-from pydantic import BaseModel, Field
-from typing import List, Optional, Any, Dict
+"""Run model — represents a single execution of an assistant on a thread."""
+
 import uuid
 from datetime import datetime
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
+
 from .shared import StepDetails
 
 
 class RunStatus(str, Enum):
+    """Possible states of a run."""
+
     QUEUED = "queued"
     IN_PROGRESS = "in_progress"
     REQUIRES_ACTION = "requires_action"
@@ -16,12 +21,16 @@ class RunStatus(str, Enum):
 
 
 class RequiredAction(BaseModel):
+    """An action required from the user before the run can continue."""
+
     type: str
     description: str
     data: Optional[Dict[str, Any]] = None
 
 
 class Run(BaseModel):
+    """Tracks the execution state of an assistant processing a thread."""
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     assistant_id: str
     thread_id: str

@@ -1,50 +1,62 @@
-import json
-import logging
-from typing import List, Dict, Any, Union
-from ..models.run import Run, RunStatus
-from ..models.shared import StepDetails, FunctionCall
-from ..models.assistant import Assistant
-from ..models.message import Message
-from ..core.assistant_manager import AssistantManager
-from ..core.thread_manager import ThreadManager
-from datetime import datetime, timezone
-from ..utils.exceptions import (
-    RunExecutionError,
-    FunctionNotFoundError,
-    FunctionExecutionError,
-)
-from ..models.tool import FunctionTool
-from ..models.function import FunctionParameter
-from ..models.tool import Tool
-from ..utils.logging_utils import log
+"""Run manager — orchestrates LLM-driven query processing and function execution."""
 
-logger = logging.getLogger(__name__)
+import json
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Union
+
+from ..models.assistant import Assistant
+from ..models.function import FunctionParameter
+from ..models.message import Message
+from ..models.run import Run, RunStatus
+from ..models.shared import FunctionCall, StepDetails
+from ..models.tool import FunctionTool, Tool
+from ..utils.exceptions import (
+    FunctionExecutionError,
+    FunctionNotFoundError,
+    RunExecutionError,
+)
+from ..utils.logging_utils import log
+from .assistant_manager import AssistantManager
+from .thread_manager import ThreadManager
+
+
+CONVERSATION_HISTORY_LIMIT = 5
+MAX_LLM_RETRIES = 3
 
 
 class RunManager:
+    """Executes runs: plans steps via LLM, calls functions, generates responses."""
+
     def __init__(
         self, assistant_manager: AssistantManager, thread_manager: ThreadManager
-    ):
+    ) -> None:
         self.assistant_manager = assistant_manager
         self.thread_manager = thread_manager
         self.runs: Dict[str, Run] = {}
 
     async def create_and_execute_run(self, thread_id: str) -> Run:
+        """Create a run from the latest user message in a thread and execute it."""
         log("THREAD", f"Creating and executing run for thread {thread_id}")
         messages = await self.thread_manager.get_messages(thread_id)
         user_query = next(
             (m.content for m in reversed(messages) if m.role == "user"), None
         )
         if not user_query:
-            log("ERROR", "No user message found in the thread", logging.ERROR)
-            raise ValueError("No user message found in the thread")
+            raise RunExecutionError("No user message found in the thread")
 
         log("THREAD", f"User query: {user_query}")
         thread = await self.thread_manager.get_thread(thread_id)
+
+        if not thread.assistants:
+            raise RunExecutionError(
+                f"Thread {thread_id} has no assistants. "
+                "Add an assistant before executing a run."
+            )
+
         run = Run(thread_id=thread_id, assistant_id=thread.assistants[0].id)
         self.runs[run.id] = run
         return await self.execute_run(
-            run.id, user_query, thread.assistants, messages[-5:]
+            run.id, user_query, thread.assistants, messages[-CONVERSATION_HISTORY_LIMIT:]
         )
 
     async def execute_run(
@@ -54,11 +66,11 @@ class RunManager:
         assistants: List[Assistant],
         messages: List[Message],
     ) -> Run:
+        """Execute a run: plan steps, call functions, generate final response."""
         log("THREAD", f"Executing run {run_id}")
         run = self.runs.get(run_id)
         if not run:
-            log("ERROR", f"Invalid run_id: {run_id}", logging.ERROR)
-            raise ValueError("Invalid run_id")
+            raise RunExecutionError(f"Run with id {run_id} not found")
 
         run.status = RunStatus.IN_PROGRESS
         run.started_at = datetime.now(timezone.utc)
@@ -78,8 +90,8 @@ class RunManager:
             )
             log("ASSISTANT", f"Selected assistant: {selected_assistant.name}")
 
-            function_results = []
-            errors = []
+            function_results: List[Dict[str, Any]] = []
+            errors: List[str] = []
             for step in run.steps:
                 log("STEP", f"Executing step {step.step_number}: {step.description}")
                 try:
@@ -87,7 +99,7 @@ class RunManager:
                     function_results.extend(step_results)
                     step.results = step_results
                 except FunctionExecutionError as e:
-                    log("ERROR", f"Function execution error: {str(e)}", logging.ERROR)
+                    log("ERROR", f"Function execution error: {e}")
                     errors.append(str(e))
 
             final_response = await self._generate_final_response(
@@ -118,11 +130,23 @@ class RunManager:
             log("THREAD", f"Run {run_id} completed at {run.completed_at}")
             return run
 
+        except (RunExecutionError, FunctionNotFoundError):
+            run.status = RunStatus.FAILED
+            raise
         except Exception as e:
             run.status = RunStatus.FAILED
             run.error = str(e)
-            log("ERROR", f"Run execution failed: {str(e)}", logging.ERROR)
-            raise RunExecutionError(f"Run execution failed: {str(e)}")
+            log("ERROR", f"Run execution failed: {e}")
+            raise RunExecutionError(f"Run execution failed: {e}")
+
+    async def get_run(self, run_id: str) -> Run:
+        """Retrieve a run by its ID."""
+        run = self.runs.get(run_id)
+        if run is None:
+            raise RunExecutionError(f"Run with id {run_id} not found")
+        return run
+
+    # --- Internal helpers ---
 
     def _serialize_messages(self, messages: List[Message]) -> List[Dict[str, Any]]:
         return [
@@ -145,21 +169,18 @@ class RunManager:
         }
 
     def _parse_json_response(self, response: str) -> Union[Dict[str, Any], str]:
+        """Try to parse JSON from a response, with fallback extraction."""
         try:
             return json.loads(response)
         except json.JSONDecodeError:
-            # Attempt to extract JSON from the response
             json_start = response.find("{")
             json_end = response.rfind("}") + 1
-            if json_start != -1 and json_end != -1:
+            if json_start != -1 and json_end > json_start:
                 try:
-                    extracted_json = response[json_start:json_end]
-                    return json.loads(extracted_json)
+                    return json.loads(response[json_start:json_end])
                 except json.JSONDecodeError:
-                    logger.warning(
-                        f"Failed to extract valid JSON from response: {response}"
-                    )
-            logger.error(f"No valid JSON found in response: {response}")
+                    log("ERROR", "Failed to extract valid JSON from response")
+            log("ERROR", "No valid JSON found in response")
             return response.strip()
 
     async def _process_query(
@@ -168,6 +189,7 @@ class RunManager:
         messages: List[Dict[str, Any]],
         assistants: List[Assistant],
     ) -> Dict[str, Any]:
+        """Use the LLM to plan execution steps based on the user query."""
         available_functions = [
             {
                 "name": tool.tool.function.name,
@@ -190,7 +212,7 @@ Analyze the following user query and determine the necessary steps to respond:
 </user_query>
 
 Recent conversation history:
-{self._format_conversation_history(messages[-5:])}
+{self._format_conversation_history(messages[-CONVERSATION_HISTORY_LIMIT:])}
 
 Available assistants and their functions:
 {self._format_assistants_and_functions(assistants)}
@@ -222,50 +244,39 @@ Important instructions:
 - Choose the assistant that has the required functions for the task.
 """
 
-        max_retries = 3
-        for attempt in range(max_retries):
+        for attempt in range(MAX_LLM_RETRIES):
             try:
                 response = await assistants[0].custom_llm_function(
                     assistants[0].model, prompt
                 )
-                logger.debug(
-                    f"Raw LLM response for process_query (attempt {attempt + 1}): {response}"
-                )
+                log("STEP", f"LLM response received (attempt {attempt + 1})")
 
-                # Try to extract JSON from the response
-                json_start = response.find("{")
-                json_end = response.rfind("}") + 1
-                if json_start != -1 and json_end != -1:
-                    json_response = response[json_start:json_end]
-                    result = json.loads(json_response)
-                else:
+                parsed = self._parse_json_response(response)
+                if isinstance(parsed, str):
                     raise json.JSONDecodeError(
                         "No JSON found in the response", response, 0
                     )
+                result = parsed
 
                 steps = result.get("steps", [])
                 selected_assistant_index = result.get("selected_assistant_index")
 
-                if not steps:
-                    logger.info("No steps found in LLM response")
-                    steps = []
-
-                # Validate function calls
-                available_function_names = set(
+                # Validate function calls against available functions
+                available_function_names = {
                     func["name"] for func in available_functions
-                )
+                }
                 steps = [
                     {
                         **step,
                         "function_calls": [
                             call
                             for call in step.get("function_calls", [])
-                            if call["name"] in available_function_names
+                            if call.get("name") in available_function_names
                         ],
                     }
                     for step in steps
                 ]
-                steps = [step for step in steps if step["function_calls"]]
+                steps = [step for step in steps if step.get("function_calls")]
 
                 selected_assistant = (
                     assistants[selected_assistant_index]
@@ -281,7 +292,8 @@ Important instructions:
                             step_number=step["step_number"],
                             description=step["description"],
                             function_calls=[
-                                FunctionCall(**call) for call in step["function_calls"]
+                                FunctionCall(**call)
+                                for call in step["function_calls"]
                             ],
                         )
                         for step in steps
@@ -289,38 +301,19 @@ Important instructions:
                 }
 
             except (json.JSONDecodeError, KeyError, IndexError, ValueError) as e:
-                logger.error(
-                    f"Error processing LLM response (attempt {attempt + 1}): {str(e)}"
-                )
-                if attempt == max_retries - 1:
-                    raise ValueError(
-                        f"Failed to get a valid response after {max_retries} attempts: {str(e)}"
+                log("ERROR", f"Error processing LLM response (attempt {attempt + 1}): {e}")
+                if attempt == MAX_LLM_RETRIES - 1:
+                    raise RunExecutionError(
+                        f"Failed to get valid response after {MAX_LLM_RETRIES} attempts: {e}"
                     )
 
-        raise ValueError("Unexpected error in _process_query")
-
-    def _format_conversation_history(self, messages: List[Dict[str, Any]]) -> str:
-        formatted_history = ""
-        for message in messages:
-            formatted_history += f"[{message['role']}]: {message['content']}\n"
-        return formatted_history
-
-    def _format_available_functions(self, functions: list[Tool]) -> str:
-        formatted_functions = ""
-        for func in functions:
-            formatted_functions += f"Function: {func.tool.function.name}\n"
-            formatted_functions += f"Description: {func.tool.function.description}\n"
-            formatted_functions += "Parameters:\n"
-            for param_name, param_details in func.tool.function.parameters.items():
-                formatted_functions += f"  - {param_name}: {param_details.type} - {param_details.description}\n"
-            formatted_functions += "\n"
-        return formatted_functions
+        raise RunExecutionError("Unexpected error in _process_query")
 
     async def _execute_step(
         self, assistant_id: str, step: StepDetails
     ) -> List[Dict[str, Any]]:
-        log("STEP", f"Executing step {step.step_number}: {step.description}")
-        results = []
+        """Execute a single step — runs all function calls in the step."""
+        results: List[Dict[str, Any]] = []
         assistant = await self.assistant_manager.get_assistant(assistant_id)
         if step.function_calls:
             for function_call in step.function_calls:
@@ -332,6 +325,7 @@ Important instructions:
     async def _execute_function(
         self, assistant: Assistant, function_call: FunctionCall
     ) -> Any:
+        """Find and execute a function from the assistant's tools."""
         function_tool = next(
             (
                 tool.tool.function
@@ -342,21 +336,17 @@ Important instructions:
             None,
         )
         if not function_tool:
-            log("ERROR", f"Function {function_call.name} not found", logging.ERROR)
             raise FunctionNotFoundError(f"Function {function_call.name} not found")
 
         try:
             result = await function_tool.implementation(**function_call.arguments)
             log("FUNCTION", f"Function {function_call.name} executed successfully")
             return result
+        except FunctionExecutionError:
+            raise
         except Exception as e:
-            log(
-                "ERROR",
-                f"Error executing function {function_call.name}: {str(e)}",
-                logging.ERROR,
-            )
             raise FunctionExecutionError(
-                f"Error executing function {function_call.name}: {str(e)}"
+                f"Error executing function {function_call.name}: {e}"
             )
 
     async def _generate_final_response(
@@ -367,7 +357,8 @@ Important instructions:
         messages: List[Dict[str, Any]],
         errors: List[str],
     ) -> str:
-        logger.info("Generating final response")
+        """Generate the final conversational response using the LLM."""
+        log("STEP", "Generating final response")
         prompt = f"""
 Generate a natural, conversational response to the following user query:
 
@@ -376,7 +367,7 @@ Generate a natural, conversational response to the following user query:
 </user_query>
 
 Recent conversation history:
-{self._format_conversation_history(messages[-5:])}
+{self._format_conversation_history(messages[-CONVERSATION_HISTORY_LIMIT:])}
 
 Function results:
 {self._format_function_results(function_results)}
@@ -412,76 +403,92 @@ Important instructions:
 - Use the available functions if they are relevant to the user's query.
 - If no functions are needed, provide an empty list for "function_calls".
 """
-        logger.debug(f"Final response prompt: {prompt}")
-
         response = await selected_assistant.custom_llm_function(
             selected_assistant.model, prompt
         )
-        logger.debug(f"Raw LLM response for final response: {response}")
 
         parsed_response = self._parse_json_response(response)
         if isinstance(parsed_response, dict) and "response" in parsed_response:
-            # Execute any function calls
-            if (
-                "function_calls" in parsed_response
-                and parsed_response["function_calls"]
-            ):
-                for call in parsed_response["function_calls"]:
-                    if call.get("name"):
-                        try:
-                            result = await self._execute_function(
-                                selected_assistant, FunctionCall(**call)
-                            )
-                            parsed_response[
-                                "response"
-                            ] += f"\n\nFunction result: {result}"
-                        except Exception as e:
-                            parsed_response[
-                                "response"
-                            ] += f"\n\nError executing function: {str(e)}"
+            # Execute any additional function calls from the response
+            additional_calls = parsed_response.get("function_calls") or []
+            for call in additional_calls:
+                if call.get("name"):
+                    try:
+                        result = await self._execute_function(
+                            selected_assistant, FunctionCall(**call)
+                        )
+                        parsed_response["response"] += f"\n\nFunction result: {result}"
+                    except (FunctionNotFoundError, FunctionExecutionError) as e:
+                        parsed_response["response"] += (
+                            f"\n\nError executing function: {e}"
+                        )
 
             return parsed_response["response"]
         else:
-            logger.warning(
-                "LLM response was not in expected JSON format. Using raw response."
-            )
+            log("STEP", "LLM response was not in expected JSON format, using raw")
             return str(parsed_response)
 
-    def _format_function_results(self, function_results: List[Dict[str, Any]]) -> str:
-        formatted_results = ""
-        for result in function_results:
-            for func_name, func_result in result.items():
-                formatted_results += f"Function: {func_name}\n"
-                formatted_results += f"Result: {json.dumps(func_result, indent=2)}\n\n"
-        return formatted_results or "No function results available."
+    # --- Formatting helpers ---
 
-    def _format_errors(self, errors: List[str]) -> str:
-        return "\n".join(errors) if errors else "No errors encountered."
+    def _format_conversation_history(self, messages: List[Dict[str, Any]]) -> str:
+        if not messages:
+            return "No conversation history."
+        return "\n".join(
+            f"[{m['role']}]: {m['content']}" for m in messages
+        )
 
-    async def get_run(self, run_id: str) -> Run:
-        run = self.runs.get(run_id)
-        if run is None:
-            raise ValueError(f"Run with id {run_id} not found")
-        return run
+    def _format_available_functions(self, functions: List[Tool]) -> str:
+        if not functions:
+            return "No functions available."
+        parts = []
+        for func in functions:
+            lines = [
+                f"Function: {func.tool.function.name}",
+                f"Description: {func.tool.function.description}",
+                "Parameters:",
+            ]
+            for param_name, param_details in func.tool.function.parameters.items():
+                lines.append(
+                    f"  - {param_name}: {param_details.type} - {param_details.description}"
+                )
+            parts.append("\n".join(lines))
+        return "\n\n".join(parts)
 
     def _format_assistants_and_functions(self, assistants: List[Assistant]) -> str:
-        formatted_output = ""
+        parts = []
         for index, assistant in enumerate(assistants):
-            formatted_output += f"Assistant {index}: {assistant.name}\n"
-            formatted_output += f"Instructions: {assistant.instructions}\n"
-            formatted_output += "Functions:\n"
+            lines = [
+                f"Assistant {index}: {assistant.name}",
+                f"Instructions: {assistant.instructions}",
+                "Functions:",
+            ]
             for tool in assistant.tools:
                 if isinstance(tool.tool, FunctionTool):
                     func = tool.tool.function
-                    formatted_output += f"  - {func.name}: {func.description}\n"
-                    formatted_output += "    Parameters:\n"
+                    lines.append(f"  - {func.name}: {func.description}")
+                    lines.append("    Parameters:")
                     for param_name, param in func.parameters.items():
-                        formatted_output += (
-                            f"      {param_name}: {param.type} - {param.description}\n"
+                        lines.append(
+                            f"      {param_name}: {param.type} - {param.description}"
                         )
                         if param.enum:
-                            formatted_output += (
-                                f"Allowed values: {', '.join(param.enum)}\n"
+                            lines.append(
+                                f"      Allowed values: {', '.join(param.enum)}"
                             )
-            formatted_output += "\n"
-        return formatted_output
+            parts.append("\n".join(lines))
+        return "\n\n".join(parts)
+
+    def _format_function_results(self, function_results: List[Dict[str, Any]]) -> str:
+        if not function_results:
+            return "No function results available."
+        parts = []
+        for result in function_results:
+            for func_name, func_result in result.items():
+                parts.append(
+                    f"Function: {func_name}\n"
+                    f"Result: {json.dumps(func_result, indent=2)}"
+                )
+        return "\n\n".join(parts)
+
+    def _format_errors(self, errors: List[str]) -> str:
+        return "\n".join(errors) if errors else "No errors encountered."
