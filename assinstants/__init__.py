@@ -3,7 +3,13 @@ from .core.thread_manager import ThreadManager
 from .core.run_manager import RunManager
 from .models.tool import Tool
 from .utils.logging_utils import set_logging
-from typing import List, Type
+from .utils.exceptions import (
+    BaseAIFrameworkError,
+    FunctionExecutionError,
+    FunctionNotFoundError,
+    RunExecutionError,
+)
+from typing import List
 
 try:
     from ._version import __version__
@@ -16,5 +22,9 @@ __all__: List[str] = [
     "RunManager",
     "Tool",
     "set_logging",
+    "BaseAIFrameworkError",
+    "FunctionExecutionError",
+    "FunctionNotFoundError",
+    "RunExecutionError",
     "__version__",
 ]

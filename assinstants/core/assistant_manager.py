@@ -1,6 +1,6 @@
 # core/assistant_manager.py
 from ..models.assistant import Assistant
-from typing import Dict, Callable, Optional, List
+from typing import Callable, Dict, List, Optional
 import uuid
 from ..models.tool import Tool
 from ..utils.logging_utils import log
@@ -35,7 +35,7 @@ class AssistantManager:
         instructions: str,
         model: str,
         custom_llm_function: Callable,
-        tools: List[Tool] = [],
+        tools: Optional[List[Tool]] = None,
         temperature: float = 0.7,
         **kwargs,
     ) -> Assistant:
@@ -45,7 +45,7 @@ class AssistantManager:
             instructions=instructions,
             model=model,
             custom_llm_function=custom_llm_function,
-            tools=tools,
+            tools=tools or [],
             temperature=temperature,
             **kwargs,
         )

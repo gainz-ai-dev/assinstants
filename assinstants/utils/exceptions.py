@@ -86,7 +86,3 @@ class FunctionNotFoundError(BaseAIFrameworkError):
 
 class FunctionExecutionError(BaseAIFrameworkError):
     """Raised when there's an error executing a function."""
-
-
-class WeatherDataFetchError(BaseAIFrameworkError):
-    """Raised when there's an error fetching weather data."""
