@@ -20,6 +20,10 @@ from .assistant_manager import AssistantManager
 from .thread_manager import ThreadManager
 
 
+CONVERSATION_HISTORY_LIMIT = 5
+MAX_LLM_RETRIES = 3
+
+
 class RunManager:
     """Executes runs: plans steps via LLM, calls functions, generates responses."""
 
@@ -52,7 +56,7 @@ class RunManager:
         run = Run(thread_id=thread_id, assistant_id=thread.assistants[0].id)
         self.runs[run.id] = run
         return await self.execute_run(
-            run.id, user_query, thread.assistants, messages[-5:]
+            run.id, user_query, thread.assistants, messages[-CONVERSATION_HISTORY_LIMIT:]
         )
 
     async def execute_run(
@@ -208,7 +212,7 @@ Analyze the following user query and determine the necessary steps to respond:
 </user_query>
 
 Recent conversation history:
-{self._format_conversation_history(messages[-5:])}
+{self._format_conversation_history(messages[-CONVERSATION_HISTORY_LIMIT:])}
 
 Available assistants and their functions:
 {self._format_assistants_and_functions(assistants)}
@@ -240,22 +244,19 @@ Important instructions:
 - Choose the assistant that has the required functions for the task.
 """
 
-        max_retries = 3
-        for attempt in range(max_retries):
+        for attempt in range(MAX_LLM_RETRIES):
             try:
                 response = await assistants[0].custom_llm_function(
                     assistants[0].model, prompt
                 )
                 log("STEP", f"LLM response received (attempt {attempt + 1})")
 
-                json_start = response.find("{")
-                json_end = response.rfind("}") + 1
-                if json_start != -1 and json_end > json_start:
-                    result = json.loads(response[json_start:json_end])
-                else:
+                parsed = self._parse_json_response(response)
+                if isinstance(parsed, str):
                     raise json.JSONDecodeError(
                         "No JSON found in the response", response, 0
                     )
+                result = parsed
 
                 steps = result.get("steps", [])
                 selected_assistant_index = result.get("selected_assistant_index")
@@ -301,9 +302,9 @@ Important instructions:
 
             except (json.JSONDecodeError, KeyError, IndexError, ValueError) as e:
                 log("ERROR", f"Error processing LLM response (attempt {attempt + 1}): {e}")
-                if attempt == max_retries - 1:
+                if attempt == MAX_LLM_RETRIES - 1:
                     raise RunExecutionError(
-                        f"Failed to get valid response after {max_retries} attempts: {e}"
+                        f"Failed to get valid response after {MAX_LLM_RETRIES} attempts: {e}"
                     )
 
         raise RunExecutionError("Unexpected error in _process_query")
@@ -366,7 +367,7 @@ Generate a natural, conversational response to the following user query:
 </user_query>
 
 Recent conversation history:
-{self._format_conversation_history(messages[-5:])}
+{self._format_conversation_history(messages[-CONVERSATION_HISTORY_LIMIT:])}
 
 Function results:
 {self._format_function_results(function_results)}

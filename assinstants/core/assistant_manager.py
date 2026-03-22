@@ -1,7 +1,9 @@
-# core/assistant_manager.py
-from ..models.assistant import Assistant
-from typing import Callable, Dict, List, Optional
+"""Assistant manager — creates and retrieves assistants."""
+
 import uuid
+from typing import Callable, Dict, List, Optional
+
+from ..models.assistant import Assistant
 from ..models.tool import Tool
 from ..utils.exceptions import AssistantNotFoundError
 from ..utils.logging_utils import log
