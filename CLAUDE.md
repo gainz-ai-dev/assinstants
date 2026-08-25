@@ -13,6 +13,7 @@ Repo-specific notes for coding agents go here.
 | Pushing to a draft, any number of times | nothing |
 | `scripts/greptile-preflight.sh`, `/code-review high` | nothing (Claude tokens, not credits) |
 | Marking a PR **ready for review** | **1 credit** |
+| Pushing to a non-draft PR | free since 2026-08-25, when org auto-review-on-commits went off |
 | Each `/greploop` round after that | **1 credit each** |
 | A TREX review | **3 credits** |
 
@@ -21,11 +22,11 @@ any older "Greptile is at its usage cap" paragraph above. Full reasoning and the
 numbers: `greptile/COST-POLICY.md` in `algominds-ai/algominds-standards`.
 
 **Greptile bills per review, not per seat.** 1 credit = 1 standard review, 3 credits = 1
-TREX review, 50 credits included per active developer, then $1 each. Measured over
-2026-07-25 to 2026-08-25: 961 human PRs, 469 of them reviewed, against an included
-allowance of 400. We were over before counting re-reviews, which is why reviews stopped
-landing on 2026-08-13. Every extra review round is real money, so treat a credit the way
-you would treat a paid API call in a loop.
+TREX review, 50 credits included per active developer, then $1 each. Off the Greptile
+dashboard on 2026-08-25: Algominds ran 518 PRs into **1,782 reviews** and a $641 invoice,
+Gainz 128 PRs into 331 reviews and $162. About $800 a month, and 1,132 of the Algominds
+credits were flex, billed on top of the seats. Every extra review round is real money, so
+treat a credit the way you would treat a paid API call in a loop.
 
 ### The order of operations, and it is not negotiable
 
@@ -56,7 +57,14 @@ you would treat a paid API call in a loop.
   incident happened.
 - **TREX (3 credits) is opt-in, once.** Allowed on sending, billing, auth or client-data
   PRs after the standard review is already 5/5. Anywhere else it needs Ed in the thread.
-  Never inside a greploop iteration.
+  Never inside a greploop iteration. TREX ran on **every** review in Algominds until
+  2026-08-25 and was 56% of the credit spend. It is now set to Filters with no filters
+  configured, and Greptile confirmed that Filters is an allowlist, so with none set it does
+  not run on ordinary reviews. The one way to invoke it is the **`trex` label**: apply it to
+  a PR and TREX runs, for 3 credits. Use it on payments, auth, sending or migrations, and
+  nowhere else. It can also be forced on by an explicit per-PR request, which is the
+  3-credit mistake to avoid: do not ask for TREX by hand, label the PR instead so the cost
+  is visible to everyone looking at it.
 - **One unit of work, one PR.** A 13,000-line PR is expensive to review and nobody reviews
   it anyway.
 - **Do not open a PR to run the tests.** Run them locally. Every PR opened against `main`
