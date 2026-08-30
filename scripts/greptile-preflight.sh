@@ -60,6 +60,19 @@ if [ -f package.json ]; then
   echo; echo "node ($PM)"
   has_script() { node -e "process.exit(require('./package.json').scripts?.['$1']?0:1)" 2>/dev/null; }
   for s in typecheck lint test build; do
+    # `lint` is gated on the DIFF when scripts/eslint-changed.sh is present,
+    # for the same reason biome and the copy rules already are (see the header
+    # of biome-changed.sh): every repo carries pre-existing findings, so a
+    # repo-wide gate is RED on day one no matter what you changed, and a gate
+    # that is always red teaches people to ignore it. Measured in va-product
+    # 2026-08-27: 1068 eslint errors on main, 1000 of them no-explicit-any.
+    #
+    # Repos without the script keep the old repo-wide `npm run lint`, so this
+    # is opt-in per repo via the sync and changes nothing until synced.
+    if [ "$s" = "lint" ] && [ -f scripts/eslint-changed.sh ]; then
+      run_step "lint (changed)" bash scripts/eslint-changed.sh "$BASE"
+      continue
+    fi
     if has_script "$s"; then run_step "$s" "$PM" run "$s"; else skipped+=("node: $s (no script)"); fi
   done
 fi

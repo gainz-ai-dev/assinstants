@@ -19,13 +19,9 @@
     "greptile-apps[bot]"
   ],
   "disabledLabels": [
-    "no-review",
-    "dependencies",
-    "docs",
-    "wip",
-    "revert"
+    "dependencies"
   ],
-  "ignoreKeywords": "[skip-review]\n[wip]\nWIP\nchore(deps)\nrevert:",
+  "ignoreKeywords": "chore(deps)",
   "ignorePatterns": "**/node_modules/**\n.next/**\ndist/**\nbuild/**\nout/**\ncoverage/**\npublic/**\n*.lock\npackage-lock.json\npnpm-lock.yaml\nyarn.lock\nbun.lockb\n*.generated.*\n*.min.*\n*.snap\n__snapshots__/**\nsupabase/migrations/**\n*.md\n*.txt\n*.svg\n*.png\n*.jpg\n*.ico\nbiome.jsonc\n.biome/**\ngreptile.json\n.greptile/**\ndocs/**\n__pycache__/**\n.venv/**\nvenv/**\n.mypy_cache/**\n.pytest_cache/**\n*.pyc\npoetry.lock\nalembic/versions/**\n.dart_tool/**\n*.g.dart\n*.freezed.dart\n*.mocks.dart\nios/Pods/**\nandroid/.gradle/**\nwindows/**\nlinux/**\nmacos/**\n.terraform/**\n*.tfstate\n*.tfstate.*\n",
   "fixWithAI": true,
   "statusCheck": true,
