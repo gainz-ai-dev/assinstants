@@ -1,13 +1,14 @@
 {
-  "_comment": "GENERATED FILE. Canonical source: algominds-ai/algominds-standards -> greptile/greptile.base.json. Edit there and run greptile/sync-greptile.sh. Per-repo deltas go in .greptile/rules.md, never here.",
+  "_comment": "GENERATED FILE. Canonical source: algominds-ai/algominds-standards -> greptile/greptile.base.json. Edit there and run greptile/sync-greptile.sh. Synced to each repo as .greptile/config.json (highest precedence per Greptile's documented order: .greptile/ > greptile.json > dashboard). Per-repo deltas go in .greptile/rules.md, never here.",
   "instructions": "Review for correctness, security and compliance. Prioritise real bugs, security issues and data-loss risks over style. Formatting, import order and lint rules are already enforced by this repo's own linter in CI (Biome on the TypeScript repos, black/flake8/mypy on the Python ones, dart analyze on Flutter), so never comment on them. Apply the product-specific rules in .greptile/rules.md. Be concise: one comment per distinct issue, no restating the diff, no praise.",
   "commentTypes": [
     "logic",
     "syntax"
   ],
   "strictness": 2,
-  "triggerOnUpdates": false,
+  "triggerOnUpdates": true,
   "triggerOnDrafts": false,
+  "fileChangeLimit": 100,
   "includeBranches": [
     "main",
     "master"
@@ -23,6 +24,26 @@
   ],
   "ignoreKeywords": "chore(deps)",
   "ignorePatterns": "**/node_modules/**\n.next/**\ndist/**\nbuild/**\nout/**\ncoverage/**\npublic/**\n*.lock\npackage-lock.json\npnpm-lock.yaml\nyarn.lock\nbun.lockb\n*.generated.*\n*.min.*\n*.snap\n__snapshots__/**\nsupabase/migrations/**\n*.md\n*.txt\n*.svg\n*.png\n*.jpg\n*.ico\nbiome.jsonc\n.biome/**\ngreptile.json\n.greptile/**\ndocs/**\n__pycache__/**\n.venv/**\nvenv/**\n.mypy_cache/**\n.pytest_cache/**\n*.pyc\npoetry.lock\nalembic/versions/**\n.dart_tool/**\n*.g.dart\n*.freezed.dart\n*.mocks.dart\nios/Pods/**\nandroid/.gradle/**\nwindows/**\nlinux/**\nmacos/**\n.terraform/**\n*.tfstate\n*.tfstate.*\n",
+  "autoApprove": {
+    "enabled": true,
+    "riskCeiling": "low",
+    "filters": {
+      "excludePaths": [
+        "**/auth/**",
+        "**/billing/**",
+        "**/payment*/**",
+        "**/sending/**",
+        "**/migrations/**",
+        "**/infra/**",
+        "**/.github/**",
+        "**/secrets/**"
+      ],
+      "excludeLabels": [
+        "trex",
+        "no-auto-approve"
+      ]
+    }
+  },
   "fixWithAI": true,
   "statusCheck": true,
   "statusCommentsEnabled": false,
