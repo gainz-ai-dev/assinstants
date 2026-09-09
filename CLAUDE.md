@@ -13,9 +13,22 @@ Repo-specific notes for coding agents go here.
 | Pushing to a draft, any number of times | nothing |
 | `scripts/greptile-preflight.sh`, `/code-review high` | nothing (Claude tokens, not credits) |
 | Marking a PR **ready for review** | **1 credit** |
-| Pushing to a non-draft PR | free since 2026-08-25, when org auto-review-on-commits went off |
+| Pushing to a non-draft PR | **1 credit** — `triggerOnUpdates` is on again since 2026-09-09 |
 | Each `/greploop` round after that | **1 credit each** |
 | A TREX review | **3 credits** |
+
+**`triggerOnUpdates` is deliberately back on.** It was turned off on 2026-08-25 to stop
+paying per push. The saving was real, but it made every re-review a manual
+`@greptile review` comment, so a PR would sit green-but-`BLOCKED` until someone remembered
+to post it — and a GitHub Action cannot post that comment for you, because slash-command
+bots ignore `github-actions[bot]`. Paying ~1 credit per round to delete that dead time is
+the right trade now that TREX (56% of the old spend) is off Always. **Batching still
+matters: one commit, one push, one round.**
+
+**Low-risk PRs approve themselves.** `autoApprove` is on with `riskCeiling: low`. Greptile
+only auto-approves after a clean review, and never on auth, billing, payments, sending,
+migrations, infra, `.github` or a PR labelled `trex` / `no-auto-approve`. It removes the
+merge step on the safe majority; it does not remove the review.
 
 Authoritative for Greptile in every `algominds-ai` and `gainz-ai-dev` repo. It supersedes
 any older "Greptile is at its usage cap" paragraph above. Full reasoning and the measured
@@ -42,8 +55,23 @@ treat a credit the way you would treat a paid API call in a loop.
 4. **Only now mark the PR ready for review.** That is the moment a credit is spent, and it
    should be the moment you believe the code is done.
 5. **`/greploop`, capped at 2 rounds.** Not the skill's default of 5.
-6. **Merge** when CI is green, Greptile is 5/5 with zero unresolved threads, and the
-   DEV-HISTORY entry is in.
+6. **Merge** when CI is green, `Greptile Review` is green, every actionable comment is
+   genuinely fixed, and the DEV-HISTORY entry is in.
+
+### The merge gate is the check, not the score
+
+`Greptile Review` reports `success` as soon as a review **completes**, whatever the
+confidence score. Measured 2026-09-09 across 33 reviewed PRs in `signals`, `va-product` and
+`pipeline`: **every one reported `success`, at 4/5 and at 5/5 alike. The check has never
+failed.** signals #1637, signals #1636 and va-product #568 all merged at 4/5.
+
+So **4/5 does not block a merge, and chasing the fifth point buys nothing the gate asks
+for.** Treat 5/5 as a nice-to-have, not an exit condition. What actually matters before
+merging is that every *actionable* comment was really fixed — a resolved-but-unfixed thread
+is how the sequencer incident happened, and that rule is about honesty, not the number.
+
+If you think a PR needs a third round, it should be because a comment identifies a real
+defect, never because the score reads 4/5.
 
 ### Rules that cost money when broken
 
@@ -55,6 +83,12 @@ treat a credit the way you would treat a paid API call in a loop.
   stop. Do not spend two more credits chasing a cosmetic point, and never resolve a thread
   the code did not actually change. A resolved-but-unfixed thread is how the sequencer
   incident happened.
+  - This cap is **not** a budget compromise that a well-resourced month should relax. The
+    check is green at 4/5 (see "The merge gate is the check, not the score"), so rounds 3-5
+    buy a number nothing reads. Any rewrite of this block that reinstates "run to 5/5, do
+    not stop early" is reintroducing a claim measured false on 2026-09-09 — the unmerged
+    branch `fix/greptile-budget-calibration` contains exactly that, and its `agents-block.md`
+    changes should not land as written.
 - **TREX (3 credits) is opt-in, once.** Allowed on sending, billing, auth or client-data
   PRs after the standard review is already 5/5. Anywhere else it needs Ed in the thread.
   Never inside a greploop iteration. TREX ran on **every** review in Algominds until
@@ -85,7 +119,7 @@ Each of these has a cost attached, so they are worth knowing by name.
    one re-review.
 4. **Treating silence as approval.** A capped org and an uninstalled repo both produce a PR
    with no score, which looks exactly like a clean one. Check before you merge (below).
-5. **Editing `greptile.json` in the product repo.** It is generated. Your change survives
+5. **Editing `.greptile/config.json` in the product repo.** It is generated. Your change survives
    until the next sync and then vanishes, usually without anyone noticing that the repo
    went back to the expensive defaults. Change it in `algominds-standards` instead.
 
@@ -100,12 +134,28 @@ silently checks nothing is worse than no gate at all.
 
 ### Escape hatches, when a PR genuinely does not need Greptile
 
-Any one of these skips the review, and a skipped review is not billed:
+**There is one, and it is a draft PR.**
 
-- Label the PR `no-review`, `dependencies`, `docs`, `wip` or `revert`
-- Put `[skip-review]` or `[wip]` in the title
-- Keep it in draft
-- Touch only ignored paths (docs, lockfiles, generated files, snapshots, migrations, images)
+The label and keyword hatches this section used to list — `no-review`, `docs`, `wip`,
+`revert`, `[skip-review]`, `[wip]` — **were removed from the config on 2026-08-30 and no
+longer skip anything.** Only `dependencies` and `chore(deps)` remain, for bot PRs.
+
+They were removed because they **strand a PR**. A skip label makes Greptile post *no status
+check at all* — not a passing one, not a skipped one, nothing — and where `Greptile Review`
+is required, GitHub reads a check that never reports as "expected, waiting for status" and
+holds the PR at `BLOCKED` indefinitely, with nothing red on it to explain why. On
+`algominds-signals` every historical skip-labelled PR (#1469, #1386, #1365) merged only
+because the person merging held admin while `enforce_admins` was off. `WIP` was worse still:
+it matched any title containing those three letters, so an author could strand their own PR
+without ever opting in.
+
+**`ignorePatterns` is NOT a trap and was deliberately left alone.** A diff lying wholly
+inside it still gets a review and still posts SUCCESS — vacuously, having read nothing, but
+it does not block. Two docs-only PRs on `algominds-signals` scored 5/5 that way on
+2026-08-30, a credit each. That is the intended behaviour: docs PRs merge without anyone
+reading them, and they cost a credit.
+
+So: **iterate in a draft.** It is free, unlimited, and it does not touch branch protection.
 
 Bot PRs (dependabot, renovate, github-actions) are excluded org-wide and must stay
 excluded: a bot with a completed review counts as a billable active developer.
@@ -134,7 +184,7 @@ over. Run it weekly. If it is red: `strictness` to 3 and greploop to 1 round unt
 
 ### Config lives in one place
 
-`greptile.json` and `scripts/greptile-*.sh` are generated from
+`.greptile/config.json` and `scripts/greptile-*.sh` are generated from
 `algominds-ai/algominds-standards`. Never edit them in a product repo. Change
 `greptile/greptile.base.json` there and re-run `greptile/sync-greptile.sh`, so every repo
 moves together. Product-specific review rules go in `.greptile/rules.md`, which is the one
